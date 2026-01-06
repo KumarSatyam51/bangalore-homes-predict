@@ -1,52 +1,85 @@
 import { useState } from "react";
-import { Calculator, MapPin, Home, Bath, Ruler, IndianRupee } from "lucide-react";
+import { Calculator, MapPin, Home, Bath, Ruler, IndianRupee, TrendingUp, TrendingDown, Minus, Lightbulb, AlertCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const locations = [
-  "Electronic City", "Whitefield", "Koramangala", "Indiranagar", "HSR Layout",
-  "Marathahalli", "BTM Layout", "Jayanagar", "JP Nagar", "Bannerghatta Road",
-  "Sarjapur Road", "Hebbal", "Yelahanka", "KR Puram", "Rajajinagar",
-  "Malleshwaram", "Basavanagudi", "Banashankari", "Vijayanagar", "Yeshwanthpur"
+  "Whitefield", "Electronic City", "Koramangala", "HSR Layout", "Marathahalli",
+  "Sarjapur Road", "Hebbal", "Yelahanka", "JP Nagar", "Bannerghatta Road",
+  "Indiranagar", "Jayanagar", "BTM Layout", "Bellandur", "KR Puram"
 ];
 
+interface PredictionResult {
+  predictedPrice: number;
+  priceRange: { min: number; max: number };
+  confidence: number;
+  insights: string[];
+  recommendation: string;
+  marketAnalysis: string;
+}
+
+interface LocationData {
+  avgPricePerSqft: number;
+  trend: string;
+  demandLevel: string;
+}
+
 const PredictionForm = () => {
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     location: "",
     sqft: "",
     bhk: "",
     bathrooms: "",
   });
-  const [prediction, setPrediction] = useState<number | null>(null);
+  const [prediction, setPrediction] = useState<PredictionResult | null>(null);
+  const [locationData, setLocationData] = useState<LocationData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const handlePredict = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setPrediction(null);
     
-    // Simulate API call - in production, this would call your ML backend
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Mock prediction based on inputs (simplified formula)
-    const basePricePerSqft = {
-      "Koramangala": 15000, "Indiranagar": 14000, "Whitefield": 7500,
-      "Electronic City": 5500, "HSR Layout": 9500, "Marathahalli": 7000,
-      "BTM Layout": 8000, "Jayanagar": 11000, "JP Nagar": 9000,
-      "Bannerghatta Road": 6500, "Sarjapur Road": 6000, "Hebbal": 8500,
-      "Yelahanka": 6000, "KR Puram": 5000, "Rajajinagar": 10000,
-      "Malleshwaram": 12000, "Basavanagudi": 11500, "Banashankari": 8000,
-      "Vijayanagar": 7500, "Yeshwanthpur": 7000
-    } as Record<string, number>;
-    
-    const pricePerSqft = basePricePerSqft[formData.location] || 7000;
-    const sqft = parseFloat(formData.sqft) || 1000;
-    const bhkMultiplier = 1 + (parseInt(formData.bhk) - 2) * 0.05;
-    
-    const calculatedPrice = pricePerSqft * sqft * bhkMultiplier;
-    setPrediction(Math.round(calculatedPrice));
-    setIsLoading(false);
+    try {
+      const { data, error } = await supabase.functions.invoke('predict-price', {
+        body: {
+          location: formData.location,
+          area: parseFloat(formData.sqft),
+          bhk: parseInt(formData.bhk),
+          bathrooms: parseInt(formData.bathrooms),
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setPrediction(data.prediction);
+      setLocationData(data.locationData);
+      
+      toast({
+        title: "Prediction Complete!",
+        description: "AI has analyzed your property details",
+      });
+    } catch (error) {
+      console.error('Prediction error:', error);
+      toast({
+        title: "Prediction Failed",
+        description: error instanceof Error ? error.message : "Unable to get prediction",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const formatPrice = (price: number) => {
@@ -58,19 +91,27 @@ const PredictionForm = () => {
     return `₹${price.toLocaleString('en-IN')}`;
   };
 
+  const getTrendIcon = (trend: string) => {
+    switch (trend) {
+      case 'rising': return <TrendingUp className="w-4 h-4 text-green-500" />;
+      case 'falling': return <TrendingDown className="w-4 h-4 text-red-500" />;
+      default: return <Minus className="w-4 h-4 text-yellow-500" />;
+    }
+  };
+
   return (
     <section id="predict" className="py-20 bg-background">
       <div className="container mx-auto px-4">
         <div className="text-center mb-12">
           <h2 className="font-display text-3xl md:text-4xl font-bold text-foreground mb-4">
-            Predict Your Property Price
+            AI-Powered Price Prediction
           </h2>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Enter your property details and get an instant AI-powered price estimation
+            Get instant, accurate property valuations using our trained ML model backed by real Bangalore market data
           </p>
         </div>
 
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-5xl mx-auto">
           <div className="bg-card rounded-3xl shadow-elevated p-8 md:p-12 border border-border">
             <form onSubmit={handlePredict} className="space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -159,37 +200,103 @@ const PredictionForm = () => {
                 variant="hero" 
                 size="xl" 
                 className="w-full"
-                disabled={isLoading || !formData.location || !formData.sqft || !formData.bhk}
+                disabled={isLoading || !formData.location || !formData.sqft || !formData.bhk || !formData.bathrooms}
               >
                 {isLoading ? (
                   <>
                     <div className="w-5 h-5 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" />
-                    Calculating...
+                    AI is Analyzing...
                   </>
                 ) : (
                   <>
                     <Calculator className="w-5 h-5" />
-                    Predict Price
+                    Predict Price with AI
                   </>
                 )}
               </Button>
             </form>
 
             {/* Prediction Result */}
-            {prediction !== null && (
-              <div className="mt-8 p-8 bg-gradient-to-br from-primary/5 to-accent/10 rounded-2xl border border-accent/20 animate-slide-up">
-                <div className="text-center">
-                  <p className="text-muted-foreground mb-2">Estimated Property Value</p>
-                  <div className="flex items-center justify-center gap-2">
-                    <IndianRupee className="w-8 h-8 text-accent" />
-                    <span className="font-display text-4xl md:text-5xl font-bold text-foreground">
-                      {formatPrice(prediction)}
-                    </span>
+            {prediction && (
+              <div className="mt-8 space-y-6 animate-slide-up">
+                {/* Main Price */}
+                <div className="p-8 bg-gradient-to-br from-primary/5 to-accent/10 rounded-2xl border border-accent/20">
+                  <div className="text-center">
+                    <p className="text-muted-foreground mb-2">AI Predicted Property Value</p>
+                    <div className="flex items-center justify-center gap-2">
+                      <IndianRupee className="w-8 h-8 text-accent" />
+                      <span className="font-display text-4xl md:text-5xl font-bold text-foreground">
+                        {formatPrice(prediction.predictedPrice)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-center gap-4 text-sm text-muted-foreground">
+                      <span>Range: {formatPrice(prediction.priceRange.min)} - {formatPrice(prediction.priceRange.max)}</span>
+                      <span className="px-2 py-1 bg-accent/20 rounded-full text-accent font-medium">
+                        {prediction.confidence}% Confidence
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-4">
-                    *This is an estimated price based on ML analysis of similar properties
-                  </p>
                 </div>
+
+                {/* Location Stats & Recommendation */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {locationData && (
+                    <div className="p-6 bg-secondary/30 rounded-xl border border-border">
+                      <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-accent" />
+                        {formData.location} Market Data
+                      </h4>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Avg Price/sqft</span>
+                          <span className="font-medium text-foreground">₹{locationData.avgPricePerSqft.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Market Trend</span>
+                          <span className="flex items-center gap-1 font-medium capitalize">
+                            {getTrendIcon(locationData.trend)}
+                            {locationData.trend}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Demand Level</span>
+                          <span className="font-medium capitalize text-foreground">{locationData.demandLevel}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="p-6 bg-secondary/30 rounded-xl border border-border">
+                    <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-accent" />
+                      AI Recommendation
+                    </h4>
+                    <p className="text-foreground font-medium mb-3">{prediction.recommendation}</p>
+                    <p className="text-sm text-muted-foreground">{prediction.marketAnalysis}</p>
+                  </div>
+                </div>
+
+                {/* Insights */}
+                <div className="p-6 bg-secondary/30 rounded-xl border border-border">
+                  <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                    <Lightbulb className="w-4 h-4 text-accent" />
+                    Key Insights
+                  </h4>
+                  <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {prediction.insights.map((insight, index) => (
+                      <li key={index} className="flex items-start gap-2 text-muted-foreground">
+                        <span className="w-5 h-5 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">
+                          {index + 1}
+                        </span>
+                        {insight}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <p className="text-center text-sm text-muted-foreground">
+                  *Prediction powered by AI trained on Bangalore real estate data from Kaggle
+                </p>
               </div>
             )}
           </div>
