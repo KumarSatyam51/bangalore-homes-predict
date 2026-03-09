@@ -22,6 +22,7 @@ const locationPriceData: Record<string, { avgPricePerSqft: number; trend: string
   "BTM Layout": { avgPricePerSqft: 8000, trend: "rising", demandLevel: "high" },
   "Bellandur": { avgPricePerSqft: 7500, trend: "rising", demandLevel: "high" },
   "KR Puram": { avgPricePerSqft: 5000, trend: "rising", demandLevel: "medium" },
+  "bochahan": {avgPricePerSqft: 5800, trend: "rising", demandLevel: "medium" },
 };
 
 serve(async (req) => {
